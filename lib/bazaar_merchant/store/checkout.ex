@@ -29,8 +29,18 @@ defmodule Merchant.Store.Checkout do
   def changeset(checkout, attrs) do
     checkout
     |> cast(attrs, [
-      :status, :currency, :line_items, :totals, :buyer, :shipping_address,
-      :billing_address, :payment, :messages, :metadata, :expires_at, :order_id
+      :status,
+      :currency,
+      :line_items,
+      :totals,
+      :buyer,
+      :shipping_address,
+      :billing_address,
+      :payment,
+      :messages,
+      :metadata,
+      :expires_at,
+      :order_id
     ])
     |> validate_required([:currency, :line_items])
     |> validate_inclusion(:status, @statuses)
@@ -40,8 +50,15 @@ defmodule Merchant.Store.Checkout do
   def update_changeset(checkout, attrs) do
     checkout
     |> cast(attrs, [
-      :status, :line_items, :totals, :buyer, :shipping_address,
-      :billing_address, :payment, :messages, :metadata
+      :status,
+      :line_items,
+      :totals,
+      :buyer,
+      :shipping_address,
+      :billing_address,
+      :payment,
+      :messages,
+      :metadata
     ])
     |> validate_inclusion(:status, @statuses)
   end
@@ -53,12 +70,16 @@ defmodule Merchant.Store.Checkout do
   end
 
   defp has_buyer?(%{buyer: nil}), do: false
+
   defp has_buyer?(%{buyer: buyer}) do
     buyer["email"] != nil || buyer["phone_number"] != nil
   end
 
   defp has_shipping_address?(%{shipping_address: nil}), do: false
+
   defp has_shipping_address?(%{shipping_address: addr}) do
-    addr["street_address"] != nil && addr["postal_code"] != nil
+    has_street = addr["street_address"] != nil || addr["line1"] != nil
+    has_postal = addr["postal_code"] != nil
+    has_street && has_postal
   end
 end

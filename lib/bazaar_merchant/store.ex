@@ -26,6 +26,16 @@ defmodule Merchant.Store do
 
   def get_product(id), do: Repo.get(Product, id)
 
+  # Safe version that handles non-UUID strings gracefully
+  defp safe_get_product(id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, _uuid} -> get_product(id)
+      :error -> nil
+    end
+  end
+
+  defp safe_get_product(_), do: nil
+
   def get_product!(id), do: Repo.get!(Product, id)
 
   def get_product_by_sku(sku), do: Repo.get_by(Product, sku: sku)
@@ -238,7 +248,7 @@ defmodule Merchant.Store do
 
       quantity = li["quantity"] || li[:quantity] || 1
 
-      case get_product_by_sku(item_id) || get_product(item_id) do
+      case get_product_by_sku(item_id) || safe_get_product(item_id) do
         nil ->
           # Product not found, return as-is with error
           %{
