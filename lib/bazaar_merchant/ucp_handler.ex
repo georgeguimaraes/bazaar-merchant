@@ -16,11 +16,11 @@ defmodule Merchant.UCPHandler do
 
   @impl true
   def business_profile do
+    # Use relative paths - DiscoveryProfile will resolve them with the request base URL
     %{
       "name" => "Bazaar Merchant Demo",
       "description" => "A demo store showcasing the Bazaar SDK for UCP",
-      "logo_url" => MerchantWeb.Endpoint.url() <> "/images/logo.svg",
-      "website" => MerchantWeb.Endpoint.url(),
+      "logo_url" => "/images/logo.svg",
       "support_email" => "support@bazaar-merchant.example",
       "signing_keys" => [
         %{
@@ -41,10 +41,11 @@ defmodule Merchant.UCPHandler do
   @impl true
   def create_checkout(params, conn) do
     Logger.info("Creating checkout", params: params, agent: conn.assigns[:ucp_agent])
+    base_url = get_base_url(conn)
 
     case Store.create_checkout(params) do
       {:ok, checkout} ->
-        {:ok, checkout_to_ucp(checkout)}
+        {:ok, checkout_to_ucp(checkout, base_url)}
 
       {:error, changeset} ->
         {:error, changeset}
@@ -52,22 +53,26 @@ defmodule Merchant.UCPHandler do
   end
 
   @impl true
-  def get_checkout(id, _conn) do
+  def get_checkout(id, conn) do
+    base_url = get_base_url(conn)
+
     case Store.get_checkout(id) do
       nil -> {:error, :not_found}
-      checkout -> {:ok, checkout_to_ucp(checkout)}
+      checkout -> {:ok, checkout_to_ucp(checkout, base_url)}
     end
   end
 
   @impl true
-  def update_checkout(id, params, _conn) do
+  def update_checkout(id, params, conn) do
+    base_url = get_base_url(conn)
+
     case Store.get_checkout(id) do
       nil ->
         {:error, :not_found}
 
       checkout ->
         case Store.update_checkout(checkout, params) do
-          {:ok, updated} -> {:ok, checkout_to_ucp(updated)}
+          {:ok, updated} -> {:ok, checkout_to_ucp(updated, base_url)}
           {:error, :already_completed} -> {:error, :invalid_state}
           {:error, :already_canceled} -> {:error, :invalid_state}
           {:error, changeset} -> {:error, changeset}
@@ -127,7 +132,7 @@ defmodule Merchant.UCPHandler do
 
   # Private helpers
 
-  defp checkout_to_ucp(checkout) do
+  defp checkout_to_ucp(checkout, base_url) do
     base = %{
       "id" => checkout.id,
       "status" => checkout.status,
@@ -135,8 +140,8 @@ defmodule Merchant.UCPHandler do
       "line_items" => checkout.line_items,
       "totals" => checkout.totals,
       "links" => [
-        %{"type" => "privacy_policy", "url" => MerchantWeb.Endpoint.url() <> "/privacy"},
-        %{"type" => "terms_of_service", "url" => MerchantWeb.Endpoint.url() <> "/terms"}
+        %{"type" => "privacy_policy", "url" => base_url <> "/privacy"},
+        %{"type" => "terms_of_service", "url" => base_url <> "/terms"}
       ],
       "payment" => checkout.payment,
       "messages" => checkout.messages || [],
@@ -148,7 +153,7 @@ defmodule Merchant.UCPHandler do
     |> maybe_add("shipping_address", checkout.shipping_address)
     |> maybe_add("billing_address", checkout.billing_address)
     |> maybe_add("expires_at", format_datetime(checkout.expires_at))
-    |> maybe_add("continue_url", continue_url(checkout))
+    |> maybe_add("continue_url", continue_url(checkout, base_url))
   end
 
   defp order_to_ucp(order) do
@@ -174,10 +179,29 @@ defmodule Merchant.UCPHandler do
   defp format_datetime(nil), do: nil
   defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
 
-  defp continue_url(%{status: status, id: id})
+  defp continue_url(%{status: status, id: id}, base_url)
        when status in ["incomplete", "ready_for_complete"] do
-    MerchantWeb.Endpoint.url() <> "/checkout/#{id}/pay"
+    base_url <> "/checkout/#{id}/pay"
   end
 
-  defp continue_url(_), do: nil
+  defp continue_url(_, _), do: nil
+
+  defp get_base_url(conn) do
+    forwarded_proto = Plug.Conn.get_req_header(conn, "x-forwarded-proto") |> List.first()
+
+    scheme =
+      cond do
+        forwarded_proto in ["https", "http"] -> forwarded_proto
+        conn.scheme == :https -> "https"
+        true -> "http"
+      end
+
+    port_suffix = if conn.port in [80, 443], do: "", else: ":#{conn.port}"
+
+    if forwarded_proto == "https" do
+      "#{scheme}://#{conn.host}"
+    else
+      "#{scheme}://#{conn.host}#{port_suffix}"
+    end
+  end
 end
