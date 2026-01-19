@@ -72,8 +72,9 @@ defmodule Merchant.Store do
   def get_checkout!(id), do: Repo.get!(Checkout, id)
 
   def create_checkout(attrs) do
-    # Enrich line items with product data
-    line_items = enrich_line_items(attrs["line_items"] || attrs[:line_items] || [])
+    # Support both "items" (UCP shorthand) and "line_items" (full format)
+    raw_items = attrs["items"] || attrs[:items] || attrs["line_items"] || attrs[:line_items] || []
+    line_items = enrich_line_items(raw_items)
     totals = calculate_totals(line_items, attrs["currency"] || attrs[:currency])
 
     # Set expiration (24 hours from now)
@@ -106,15 +107,17 @@ defmodule Merchant.Store do
 
   def update_checkout(%Checkout{} = checkout, attrs) do
     # Recalculate totals if line items changed
-    attrs = if attrs["line_items"] do
-      line_items = enrich_line_items(attrs["line_items"])
-      totals = calculate_totals(line_items, checkout.currency)
-      attrs
-      |> Map.put("line_items", line_items)
-      |> Map.put("totals", totals)
-    else
-      attrs
-    end
+    attrs =
+      if attrs["line_items"] do
+        line_items = enrich_line_items(attrs["line_items"])
+        totals = calculate_totals(line_items, checkout.currency)
+
+        attrs
+        |> Map.put("line_items", line_items)
+        |> Map.put("totals", totals)
+      else
+        attrs
+      end
 
     # Determine new status based on completeness
     attrs = update_checkout_status(checkout, attrs)
@@ -127,10 +130,11 @@ defmodule Merchant.Store do
   defp update_checkout_status(checkout, attrs) do
     updated = struct(checkout, atomize_keys(attrs))
 
-    new_status = cond do
-      Checkout.ready_for_complete?(updated) -> "ready_for_complete"
-      true -> "incomplete"
-    end
+    new_status =
+      cond do
+        Checkout.ready_for_complete?(updated) -> "ready_for_complete"
+        true -> "incomplete"
+      end
 
     Map.put(attrs, "status", new_status)
   end
@@ -158,7 +162,8 @@ defmodule Merchant.Store do
     |> Repo.update()
   end
 
-  def complete_checkout(%Checkout{status: status}) when status not in ["ready_for_complete", "incomplete"] do
+  def complete_checkout(%Checkout{status: status})
+      when status not in ["ready_for_complete", "incomplete"] do
     {:error, :invalid_status}
   end
 
@@ -169,7 +174,8 @@ defmodule Merchant.Store do
       {:ok, order} = Repo.insert(order_changeset)
 
       # Update checkout
-      {:ok, updated_checkout} = checkout
+      {:ok, updated_checkout} =
+        checkout
         |> Checkout.update_changeset(%{"status" => "completed", "order_id" => order.id})
         |> Repo.update()
 
@@ -218,7 +224,18 @@ defmodule Merchant.Store do
 
   defp enrich_line_items(line_items) do
     Enum.map(line_items, fn li ->
-      item_id = get_in(li, ["item", "id"]) || get_in(li, [:item, :id])
+      # Support multiple item ID formats:
+      # - {"item": {"id": "SKU"}} (full UCP format)
+      # - {"sku": "SKU"} (shorthand)
+      # - {"product_id": "UUID"} (by product ID)
+      item_id =
+        get_in(li, ["item", "id"]) ||
+          get_in(li, [:item, :id]) ||
+          li["sku"] ||
+          li[:sku] ||
+          li["product_id"] ||
+          li[:product_id]
+
       quantity = li["quantity"] || li[:quantity] || 1
 
       case get_product_by_sku(item_id) || get_product(item_id) do
@@ -232,6 +249,7 @@ defmodule Merchant.Store do
 
         product ->
           subtotal = product.price_cents * quantity
+
           %{
             "item" => %{
               "id" => product.sku || product.id,
@@ -247,10 +265,11 @@ defmodule Merchant.Store do
   end
 
   defp calculate_totals(line_items, _currency) do
-    subtotal = Enum.reduce(line_items, 0, fn li, acc ->
-      item_subtotal = get_in(li, ["totals", Access.at(0), "amount"]) || 0
-      acc + item_subtotal
-    end)
+    subtotal =
+      Enum.reduce(line_items, 0, fn li, acc ->
+        item_subtotal = get_in(li, ["totals", Access.at(0), "amount"]) || 0
+        acc + item_subtotal
+      end)
 
     # Mock tax calculation (8%)
     tax = round(subtotal * 0.08)
@@ -265,11 +284,12 @@ defmodule Merchant.Store do
       %{"type" => "tax", "amount" => tax}
     ]
 
-    totals = if shipping > 0 do
-      totals ++ [%{"type" => "fulfillment", "amount" => shipping}]
-    else
-      totals
-    end
+    totals =
+      if shipping > 0 do
+        totals ++ [%{"type" => "fulfillment", "amount" => shipping}]
+      else
+        totals
+      end
 
     totals ++ [%{"type" => "total", "amount" => total}]
   end
