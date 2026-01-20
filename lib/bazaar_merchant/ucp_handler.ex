@@ -12,7 +12,7 @@ defmodule Merchant.UCPHandler do
   require Logger
 
   @impl true
-  def capabilities, do: [:checkout, :orders]
+  def capabilities, do: [:checkout, :orders, :catalog]
 
   @impl true
   def business_profile do
@@ -137,6 +137,51 @@ defmodule Merchant.UCPHandler do
     end
   end
 
+  # Catalog callbacks
+
+  @impl true
+  def list_products(params, _conn) do
+    opts = [
+      category: params["category"],
+      limit: parse_limit(params["limit"], 50)
+    ]
+
+    products = Store.list_products(opts)
+
+    {:ok,
+     %{
+       "products" => Enum.map(products, &product_to_ucp/1),
+       "has_more" => false
+     }}
+  end
+
+  @impl true
+  def get_product(id, _conn) do
+    case Store.get_product(id) || Store.get_product_by_sku(id) do
+      nil -> {:error, :not_found}
+      product -> {:ok, product_to_ucp(product)}
+    end
+  end
+
+  @impl true
+  def search_products(params, _conn) do
+    query = params["q"] || params["query"] || ""
+
+    opts = [
+      category: params["category"],
+      limit: parse_limit(params["limit"], 20)
+    ]
+
+    products = Store.search_products(query, opts)
+
+    {:ok,
+     %{
+       "products" => Enum.map(products, &product_to_ucp/1),
+       "query" => query,
+       "has_more" => false
+     }}
+  end
+
   # Webhook callback
 
   @impl true
@@ -194,6 +239,30 @@ defmodule Merchant.UCPHandler do
 
   defp maybe_add(map, _key, nil), do: map
   defp maybe_add(map, key, value), do: Map.put(map, key, value)
+
+  defp product_to_ucp(product) do
+    %{
+      "id" => product.sku || product.id,
+      "title" => product.title,
+      "description" => product.description,
+      "price" => product.price_cents,
+      "currency" => "USD",
+      "image_url" => product.image_url,
+      "category" => product.category,
+      "in_stock" => product.stock > 0,
+      "stock" => product.stock
+    }
+  end
+
+  defp parse_limit(nil, default), do: default
+  defp parse_limit(limit, _default) when is_integer(limit), do: min(limit, 100)
+
+  defp parse_limit(limit, default) when is_binary(limit) do
+    case Integer.parse(limit) do
+      {n, _} -> min(n, 100)
+      :error -> default
+    end
+  end
 
   defp format_datetime(nil), do: nil
   defp format_datetime(%DateTime{} = dt), do: DateTime.to_iso8601(dt)

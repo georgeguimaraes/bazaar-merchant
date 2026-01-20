@@ -64,6 +64,23 @@ defmodule Merchant.Store do
     |> Repo.all()
   end
 
+  def search_products(query, opts \\ []) do
+    search_term = "%#{query}%"
+
+    Product
+    |> where([p], p.active == true)
+    |> where(
+      [p],
+      ilike(p.title, ^search_term) or
+        ilike(p.description, ^search_term) or
+        ilike(p.sku, ^search_term)
+    )
+    |> filter_category(Keyword.get(opts, :category))
+    |> limit(^Keyword.get(opts, :limit, 20))
+    |> order_by([p], desc: p.inserted_at)
+    |> Repo.all()
+  end
+
   # Checkouts
 
   def list_checkouts(opts \\ []) do
