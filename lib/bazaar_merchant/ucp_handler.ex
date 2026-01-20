@@ -94,6 +94,25 @@ defmodule Merchant.UCPHandler do
     end
   end
 
+  @impl true
+  def complete_checkout(id, conn) do
+    base_url = get_base_url(conn)
+
+    case Store.get_checkout(id) do
+      nil ->
+        {:error, :not_found}
+
+      checkout ->
+        case Store.complete_checkout(checkout) do
+          {:ok, {updated_checkout, _order}} ->
+            {:ok, checkout_to_ucp(updated_checkout, base_url)}
+
+          {:error, :invalid_status} ->
+            {:error, :invalid_state}
+        end
+    end
+  end
+
   # Order callbacks
 
   @impl true
