@@ -230,6 +230,78 @@ defmodule Merchant.Store do
     |> Repo.update()
   end
 
+  @doc """
+  Adds a fulfillment event to an order (e.g., shipped, delivered).
+
+  Event types: processing, shipped, in_transit, delivered, failed_attempt,
+  canceled, undeliverable, returned_to_sender
+  """
+  def add_fulfillment_event(%Order{} = order, event_type, opts \\ []) do
+    event = build_fulfillment_event(order, event_type, opts)
+    current_events = get_in(order.fulfillment, ["events"]) || []
+    updated_fulfillment = Map.put(order.fulfillment || %{}, "events", current_events ++ [event])
+
+    # Update order status based on event type
+    new_status = fulfillment_event_to_status(event_type, order.status)
+
+    order
+    |> Order.changeset(%{fulfillment: updated_fulfillment, status: new_status})
+    |> Repo.update()
+  end
+
+  defp build_fulfillment_event(order, event_type, opts) do
+    # Get all line item IDs and quantities from order
+    line_items =
+      Enum.map(order.line_items, fn li ->
+        %{"id" => li["item"]["id"], "quantity" => li["quantity"]}
+      end)
+
+    event = %{
+      "id" => "evt_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+      "occurred_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
+      "type" => to_string(event_type),
+      "line_items" => line_items
+    }
+
+    event
+    |> maybe_put("carrier", opts[:carrier])
+    |> maybe_put("tracking_number", opts[:tracking_number])
+    |> maybe_put("tracking_url", opts[:tracking_url])
+    |> maybe_put("description", opts[:description])
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, _key, ""), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp fulfillment_event_to_status(event_type, current_status) do
+    case event_type do
+      :processing -> "processing"
+      :shipped -> "shipped"
+      :in_transit -> "shipped"
+      :delivered -> "delivered"
+      :failed_attempt -> current_status
+      :canceled -> "canceled"
+      :undeliverable -> current_status
+      :returned_to_sender -> "refunded"
+      _ -> current_status
+    end
+  end
+
+  @doc "Returns available fulfillment event types."
+  def fulfillment_event_types do
+    [
+      :processing,
+      :shipped,
+      :in_transit,
+      :delivered,
+      :failed_attempt,
+      :canceled,
+      :undeliverable,
+      :returned_to_sender
+    ]
+  end
+
   # Helpers
 
   defp enrich_line_items(line_items) do
