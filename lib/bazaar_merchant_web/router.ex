@@ -20,10 +20,16 @@ defmodule MerchantWeb.Router do
     plug Bazaar.Plugs.Idempotency
   end
 
-  # UCP API routes (for AI agents)
-  scope "/" do
+  # UCP API routes (Google agents)
+  scope "/ucp" do
     pipe_through [:api, :ucp]
     bazaar_routes("/", Merchant.UCPHandler)
+  end
+
+  # ACP API routes (OpenAI/Stripe agents)
+  scope "/acp" do
+    pipe_through :api
+    bazaar_routes("/", Merchant.UCPHandler, protocol: :acp)
   end
 
   # Web routes (for humans)

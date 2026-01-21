@@ -1,16 +1,19 @@
 # Bazaar Merchant
 
-A demo/reference implementation of a UCP-compliant merchant using the [Bazaar SDK](../bazaar).
+A demo/reference implementation of a UCP and ACP-compliant merchant using the [Bazaar SDK](../bazaar).
 
-This Phoenix application demonstrates how to build an e-commerce API that AI shopping agents can interact with via the [Universal Commerce Protocol (UCP)](https://ucp.dev).
+This Phoenix application demonstrates how to build an e-commerce API that AI shopping agents can interact with via both:
+- **[UCP](https://ucp.dev)** (Universal Commerce Protocol) - Used by Google Shopping agents
+- **[ACP](https://github.com/agentic-commerce-protocol/acp-spec)** (Agentic Commerce Protocol) - Used by OpenAI Operator and Stripe
 
 ## What This Demo Shows
 
 - Implementing the `Bazaar.Handler` behaviour
+- Serving both UCP and ACP from a single handler
 - In-memory store for checkouts and orders (no database required)
 - Complete checkout flow: create → update → complete
 - Order management: get, cancel
-- UCP discovery profile at `/.well-known/ucp`
+- UCP discovery profile at `/ucp/.well-known/ucp`
 
 ## Quick Start
 
@@ -22,18 +25,18 @@ mix setup
 mix phx.server
 ```
 
-Visit `http://localhost:4000/.well-known/ucp` to see the discovery profile.
+Visit `http://localhost:4000/ucp/.well-known/ucp` to see the UCP discovery profile.
 
 ## Validating with ucp-tools
 
-Use the [ucp-tools CLI](https://github.com/user/ucp-tools) to validate your implementation:
+Use the [ucp-tools CLI](https://github.com/user/ucp-tools) to validate your UCP implementation:
 
 ```bash
 # Validate the discovery profile
-ucp validate profile http://localhost:4000
+ucp validate profile http://localhost:4000/ucp
 
-# Run checkout flow tests (if available)
-ucp test checkout http://localhost:4000
+# Run checkout flow tests
+ucp test checkout http://localhost:4000/ucp
 ```
 
 Note: Local development uses HTTP. Production deployments should use HTTPS.
@@ -79,58 +82,121 @@ defmodule Merchant.UCPHandler do
 end
 ```
 
-## UCP Endpoints
+## Endpoints
 
-The router mounts these endpoints via `bazaar_routes/2`:
+### UCP Endpoints (at `/ucp`)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/.well-known/ucp` | Discovery profile |
-| POST | `/checkout-sessions` | Create checkout |
-| GET | `/checkout-sessions/:id` | Get checkout |
-| PATCH | `/checkout-sessions/:id` | Update checkout |
-| DELETE | `/checkout-sessions/:id` | Cancel checkout |
-| POST | `/checkout-sessions/:id/complete` | Complete checkout |
-| GET | `/orders/:id` | Get order |
-| POST | `/orders/:id/actions/cancel` | Cancel order |
+| GET | `/ucp/.well-known/ucp` | Discovery profile |
+| POST | `/ucp/checkout-sessions` | Create checkout |
+| GET | `/ucp/checkout-sessions/:id` | Get checkout |
+| PATCH | `/ucp/checkout-sessions/:id` | Update checkout |
+| DELETE | `/ucp/checkout-sessions/:id` | Cancel checkout |
+| POST | `/ucp/checkout-sessions/:id/actions/complete` | Complete checkout |
+| GET | `/ucp/orders/:id` | Get order |
+| POST | `/ucp/orders/:id/actions/cancel` | Cancel order |
+
+### ACP Endpoints (at `/acp`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/acp/checkout_sessions` | Create checkout |
+| GET | `/acp/checkout_sessions/:id` | Get checkout |
+| POST | `/acp/checkout_sessions/:id` | Update checkout |
+| POST | `/acp/checkout_sessions/:id/complete` | Complete checkout |
+| POST | `/acp/checkout_sessions/:id/cancel` | Cancel checkout |
+
+Note: ACP does not have a discovery endpoint. Merchants register with the centralized Stripe/OpenAI registry.
 
 ## Testing the Flow
 
+### UCP Flow
+
 1. Create a checkout:
 ```bash
-curl -X POST http://localhost:4000/checkout-sessions \
+curl -X POST http://localhost:4000/ucp/checkout-sessions \
   -H "Content-Type: application/json" \
   -d '{
-    "currency": "USD",
-    "line_items": [{
-      "item": {"id": "SKU-001", "title": "Widget", "price": 1999},
-      "quantity": 1,
-      "totals": [{"type": "subtotal", "amount": 1999}]
-    }],
-    "totals": [{"type": "total", "amount": 1999}]
+    "currency": "usd",
+    "items": [{"sku": "DEMO-001", "quantity": 1}]
   }'
 ```
 
 2. Update with buyer info:
 ```bash
-curl -X PATCH http://localhost:4000/checkout-sessions/{id} \
+curl -X PATCH http://localhost:4000/ucp/checkout-sessions/{id} \
   -H "Content-Type: application/json" \
   -d '{
     "buyer": {
       "email": "buyer@example.com",
-      "first_name": "Jane",
-      "last_name": "Doe"
+      "name": "Jane Doe",
+      "shipping_address": {
+        "street_address": "123 Main St",
+        "address_locality": "San Francisco",
+        "address_region": "CA",
+        "postal_code": "94102",
+        "address_country": "US"
+      }
     }
   }'
 ```
 
 3. Complete the checkout:
 ```bash
-curl -X POST http://localhost:4000/checkout-sessions/{id}/complete
+curl -X POST http://localhost:4000/ucp/checkout-sessions/{id}/actions/complete
 ```
+
+### ACP Flow
+
+1. Create a checkout:
+```bash
+curl -X POST http://localhost:4000/acp/checkout_sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "currency": "usd",
+    "line_items": [{"product": {"id": "DEMO-001"}, "quantity": 1}]
+  }'
+```
+
+2. Update with buyer info:
+```bash
+curl -X POST http://localhost:4000/acp/checkout_sessions/{id} \
+  -H "Content-Type: application/json" \
+  -d '{
+    "buyer": {
+      "email": "buyer@example.com",
+      "name": "Jane Doe",
+      "shipping_address": {
+        "line_one": "123 Main St",
+        "city": "San Francisco",
+        "state": "CA",
+        "postal_code": "94102",
+        "country": "US"
+      }
+    }
+  }'
+```
+
+3. Complete the checkout:
+```bash
+curl -X POST http://localhost:4000/acp/checkout_sessions/{id}/complete
+```
+
+### Key Differences
+
+| Aspect | UCP | ACP |
+|--------|-----|-----|
+| Items key | `items` | `line_items` |
+| SKU field | `sku` | `product.id` |
+| Update method | `PATCH` | `POST` |
+| Status: incomplete | `incomplete` | `not_ready_for_payment` |
+| Address: street | `street_address` | `line_one` |
+| Address: city | `address_locality` | `city` |
 
 ## Related Projects
 
-- [Bazaar](../bazaar) - The Elixir SDK for UCP
+- [Bazaar](../bazaar) - The Elixir SDK for UCP and ACP
 - [Smelter](../smelter) - JSON Schema to Elixir code generator
-- [UCP Specification](https://ucp.dev) - The Universal Commerce Protocol
+- [UCP Specification](https://ucp.dev) - Universal Commerce Protocol (Google)
+- [ACP Specification](https://github.com/agentic-commerce-protocol/acp-spec) - Agentic Commerce Protocol (OpenAI/Stripe)

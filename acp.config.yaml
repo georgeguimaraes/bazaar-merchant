@@ -1,0 +1,4 @@
+checkoutUrl: http://localhost:4000/acp/checkout_sessions
+apiKey: test_key_123
+apiVersion: "2025-09-29"
+timeout: 30000
