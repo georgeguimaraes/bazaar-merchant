@@ -64,7 +64,8 @@ defmodule Merchant.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
-      {:bazaar, path: "../bazaar"}
+      {:bazaar, path: "../bazaar"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

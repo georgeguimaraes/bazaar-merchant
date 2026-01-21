@@ -158,10 +158,7 @@ defmodule Merchant.Store do
     updated = struct(checkout, atomize_keys(attrs))
 
     new_status =
-      cond do
-        Checkout.ready_for_complete?(updated) -> "ready_for_complete"
-        true -> "incomplete"
-      end
+      if Checkout.ready_for_complete?(updated), do: "ready_for_complete", else: "incomplete"
 
     Map.put(attrs, "status", new_status)
   end

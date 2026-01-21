@@ -1,4 +1,5 @@
 defmodule Merchant.Store.Product do
+  @moduledoc "Product schema representing an item available for purchase."
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -20,7 +21,16 @@ defmodule Merchant.Store.Product do
 
   def changeset(product, attrs) do
     product
-    |> cast(attrs, [:sku, :title, :description, :price_cents, :image_url, :stock, :category, :active])
+    |> cast(attrs, [
+      :sku,
+      :title,
+      :description,
+      :price_cents,
+      :image_url,
+      :stock,
+      :category,
+      :active
+    ])
     |> validate_required([:sku, :title, :price_cents])
     |> validate_number(:price_cents, greater_than: 0)
     |> validate_number(:stock, greater_than_or_equal_to: 0)

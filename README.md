@@ -27,19 +27,68 @@ mix phx.server
 
 Visit `http://localhost:4000/ucp/.well-known/ucp` to see the UCP discovery profile.
 
-## Validating with ucp-tools
+## Validation Tools
 
-Use the [ucp-tools CLI](https://github.com/user/ucp-tools) to validate your UCP implementation:
+### UCP Validator
+
+Use the [@ucptools/validator](../ucp-tools) to validate your UCP profile:
 
 ```bash
-# Validate the discovery profile
-ucp validate profile http://localhost:4000/ucp
+cd ../ucp-tools
 
-# Run checkout flow tests
-ucp test checkout http://localhost:4000/ucp
+# Validate from a file (save profile first)
+curl -s http://localhost:4000/ucp/.well-known/ucp > /tmp/ucp-profile.json
+npm run validate -- validate -f /tmp/ucp-profile.json
+
+# Output as JSON
+npm run validate -- validate -f /tmp/ucp-profile.json --json
+
+# Quick validation (no network checks for schema fetching)
+npm run validate -- validate -f /tmp/ucp-profile.json -q
 ```
 
-Note: Local development uses HTTP. Production deployments should use HTTPS.
+The validator checks:
+- **Structural validation**: JSON structure, required fields, version format
+- **UCP rules**: Namespace/origin binding, endpoint requirements (HTTPS), signing keys
+- **Network validation**: Remote schema fetching and verification
+
+Example output:
+```json
+{
+  "ok": true,
+  "ucp_version": "2026-01-11",
+  "issues": [],
+  "sdk_validation": { "compliant": true }
+}
+```
+
+**Note**: Local development uses HTTP which the validator will flag. Production deployments should use HTTPS.
+
+### Request/Response Validation
+
+Bazaar includes built-in validation plugs for development:
+
+```elixir
+# In your router pipeline
+pipeline :ucp do
+  plug Bazaar.Plugs.ValidateRequest   # Validates incoming requests
+  plug Bazaar.Plugs.ValidateResponse, # Validates outgoing responses
+    strict: Application.compile_env(:bazaar_merchant, :strict_validation, false)
+end
+```
+
+- **ValidateRequest**: Validates incoming request bodies against UCP schemas (e.g., `CheckoutCreateReq`)
+- **ValidateResponse**: Validates outgoing response bodies against UCP schemas (e.g., `CheckoutResp`)
+
+Set `strict_validation: true` in config to raise on validation failures (useful for development).
+
+### ACP Validation
+
+ACP requests and responses are automatically transformed by `Bazaar.Protocol.Transformer`:
+- Requests: ACP format → UCP format (before handler)
+- Responses: UCP format → ACP format (after handler)
+
+No separate ACP validator is needed; the same UCP schemas validate the transformed data.
 
 ## Project Structure
 

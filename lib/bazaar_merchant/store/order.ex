@@ -1,4 +1,5 @@
 defmodule Merchant.Store.Order do
+  @moduledoc "Order schema representing a completed checkout."
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -30,9 +31,19 @@ defmodule Merchant.Store.Order do
   def changeset(order, attrs) do
     order
     |> cast(attrs, [
-      :checkout_id, :status, :currency, :line_items, :totals, :buyer,
-      :shipping_address, :billing_address, :fulfillment, :adjustments,
-      :metadata, :payment_method, :payment_last_four
+      :checkout_id,
+      :status,
+      :currency,
+      :line_items,
+      :totals,
+      :buyer,
+      :shipping_address,
+      :billing_address,
+      :fulfillment,
+      :adjustments,
+      :metadata,
+      :payment_method,
+      :payment_last_four
     ])
     |> validate_required([:checkout_id, :currency, :line_items, :totals])
     |> validate_inclusion(:status, @statuses)

@@ -1,6 +1,6 @@
 import Config
 
-config :bazaar_merchant, strict_validation: true
+config :bazaar_merchant, strict_validation: false
 
 # Configure your database
 config :bazaar_merchant, Merchant.Repo,

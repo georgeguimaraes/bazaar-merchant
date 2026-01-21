@@ -1,4 +1,5 @@
 defmodule Merchant.Store.Checkout do
+  @moduledoc "Checkout schema representing a shopping session."
   use Ecto.Schema
   import Ecto.Changeset
 
