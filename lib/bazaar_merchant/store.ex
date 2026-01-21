@@ -5,7 +5,7 @@ defmodule Merchant.Store do
 
   import Ecto.Query
   alias Merchant.Repo
-  alias Merchant.Store.{Product, Checkout, Order}
+  alias Merchant.Store.{Checkout, Order, Product}
 
   # Products
 
@@ -288,18 +288,17 @@ defmodule Merchant.Store do
   defp maybe_put(map, _key, ""), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
+  @fulfillment_status_map %{
+    processing: "processing",
+    shipped: "shipped",
+    in_transit: "shipped",
+    delivered: "delivered",
+    canceled: "canceled",
+    returned_to_sender: "refunded"
+  }
+
   defp fulfillment_event_to_status(event_type, current_status) do
-    case event_type do
-      :processing -> "processing"
-      :shipped -> "shipped"
-      :in_transit -> "shipped"
-      :delivered -> "delivered"
-      :failed_attempt -> current_status
-      :canceled -> "canceled"
-      :undeliverable -> current_status
-      :returned_to_sender -> "refunded"
-      _ -> current_status
-    end
+    Map.get(@fulfillment_status_map, event_type, current_status)
   end
 
   @doc "Returns available fulfillment event types."
@@ -319,45 +318,48 @@ defmodule Merchant.Store do
   # Helpers
 
   defp enrich_line_items(line_items) do
-    Enum.map(line_items, fn li ->
-      # Support multiple item ID formats:
-      # - {"item": {"id": "SKU"}} (full UCP format)
-      # - {"sku": "SKU"} (shorthand)
-      # - {"product_id": "UUID"} (by product ID)
-      item_id =
-        get_in(li, ["item", "id"]) ||
-          get_in(li, [:item, :id]) ||
-          li["sku"] ||
-          li[:sku] ||
-          li["product_id"] ||
-          li[:product_id]
+    Enum.map(line_items, &enrich_line_item/1)
+  end
 
-      quantity = li["quantity"] || li[:quantity] || 1
+  defp enrich_line_item(li) do
+    item_id = extract_item_id(li)
+    quantity = li["quantity"] || li[:quantity] || 1
+    product = get_product_by_sku(item_id) || safe_get_product(item_id)
+    build_enriched_line_item(product, item_id, quantity)
+  end
 
-      case get_product_by_sku(item_id) || safe_get_product(item_id) do
-        nil ->
-          # Product not found, return as-is with error
-          %{
-            "item" => %{"id" => item_id, "title" => "Unknown Product", "price" => 0},
-            "quantity" => quantity,
-            "totals" => [%{"type" => "subtotal", "amount" => 0}]
-          }
+  defp extract_item_id(li) do
+    # Support multiple item ID formats:
+    # - {"item": {"id": "SKU"}} (full UCP format)
+    # - {"sku": "SKU"} (shorthand)
+    # - {"product_id": "UUID"} (by product ID)
+    get_in(li, ["item", "id"]) ||
+      get_in(li, [:item, :id]) ||
+      li["sku"] || li[:sku] ||
+      li["product_id"] || li[:product_id]
+  end
 
-        product ->
-          subtotal = product.price_cents * quantity
+  defp build_enriched_line_item(nil, item_id, quantity) do
+    %{
+      "item" => %{"id" => item_id, "title" => "Unknown Product", "price" => 0},
+      "quantity" => quantity,
+      "totals" => [%{"type" => "subtotal", "amount" => 0}]
+    }
+  end
 
-          %{
-            "item" => %{
-              "id" => product.sku || product.id,
-              "title" => product.title,
-              "price" => product.price_cents,
-              "image_url" => product.image_url
-            },
-            "quantity" => quantity,
-            "totals" => [%{"type" => "subtotal", "amount" => subtotal}]
-          }
-      end
-    end)
+  defp build_enriched_line_item(product, _item_id, quantity) do
+    subtotal = product.price_cents * quantity
+
+    %{
+      "item" => %{
+        "id" => product.sku || product.id,
+        "title" => product.title,
+        "price" => product.price_cents,
+        "image_url" => product.image_url
+      },
+      "quantity" => quantity,
+      "totals" => [%{"type" => "subtotal", "amount" => subtotal}]
+    }
   end
 
   defp calculate_totals(line_items, _currency) do

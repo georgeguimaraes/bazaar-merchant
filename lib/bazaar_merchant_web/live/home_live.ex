@@ -1,8 +1,8 @@
 defmodule MerchantWeb.HomeLive do
   use MerchantWeb, :live_view
 
-  alias Merchant.Store
   alias Merchant.CartServer
+  alias Merchant.Store
 
   @impl true
   def mount(_params, session, socket) do

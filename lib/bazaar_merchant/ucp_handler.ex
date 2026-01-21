@@ -9,6 +9,7 @@ defmodule Merchant.UCPHandler do
   use Bazaar.Handler
 
   alias Merchant.Store
+  alias Merchant.Store.Order
   require Logger
 
   @impl true
@@ -224,7 +225,7 @@ defmodule Merchant.UCPHandler do
     %{
       "id" => order.id,
       "checkout_id" => order.checkout_id,
-      "permalink_url" => Merchant.Store.Order.permalink_url(order),
+      "permalink_url" => Order.permalink_url(order),
       "status" => order.status,
       "currency" => order.currency,
       "line_items" => order.line_items,

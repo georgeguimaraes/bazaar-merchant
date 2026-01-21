@@ -233,20 +233,19 @@ defmodule MerchantWeb.Admin.DashboardLive do
     """
   end
 
-  defp status_badge(assigns) do
-    color =
-      case assigns.status do
-        "completed" -> "success"
-        "delivered" -> "success"
-        "shipped" -> "info"
-        "processing" -> "warning"
-        "pending" -> "warning"
-        "incomplete" -> "ghost"
-        "ready_for_complete" -> "info"
-        "canceled" -> "error"
-        _ -> "ghost"
-      end
+  @status_colors %{
+    "completed" => "success",
+    "delivered" => "success",
+    "shipped" => "info",
+    "processing" => "warning",
+    "pending" => "warning",
+    "incomplete" => "ghost",
+    "ready_for_complete" => "info",
+    "canceled" => "error"
+  }
 
+  defp status_badge(assigns) do
+    color = Map.get(@status_colors, assigns.status, "ghost")
     assigns = assign(assigns, :color, color)
 
     ~H"""
