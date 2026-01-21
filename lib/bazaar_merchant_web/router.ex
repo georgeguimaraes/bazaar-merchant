@@ -18,6 +18,10 @@ defmodule MerchantWeb.Router do
   pipeline :ucp do
     plug Bazaar.Plugs.UCPHeaders
     plug Bazaar.Plugs.Idempotency
+    plug Bazaar.Plugs.ValidateRequest
+
+    plug Bazaar.Plugs.ValidateResponse,
+      strict: Application.compile_env(:bazaar_merchant, :strict_validation, false)
   end
 
   # UCP API routes (Google agents)
@@ -26,9 +30,16 @@ defmodule MerchantWeb.Router do
     bazaar_routes("/", Merchant.UCPHandler)
   end
 
+  pipeline :acp do
+    plug Bazaar.Plugs.ValidateRequest
+
+    plug Bazaar.Plugs.ValidateResponse,
+      strict: Application.compile_env(:bazaar_merchant, :strict_validation, false)
+  end
+
   # ACP API routes (OpenAI/Stripe agents)
   scope "/acp" do
-    pipe_through :api
+    pipe_through [:api, :acp]
     bazaar_routes("/", Merchant.UCPHandler, protocol: :acp)
   end
 

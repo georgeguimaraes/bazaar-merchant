@@ -1,5 +1,7 @@
 import Config
 
+config :bazaar_merchant, strict_validation: true
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

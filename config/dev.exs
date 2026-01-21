@@ -1,5 +1,7 @@
 import Config
 
+config :bazaar_merchant, strict_validation: true
+
 # Configure your database
 config :bazaar_merchant, Merchant.Repo,
   username: "postgres",
